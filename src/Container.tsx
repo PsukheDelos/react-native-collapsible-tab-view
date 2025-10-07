@@ -5,10 +5,10 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
+  useFrameCallback,
   useSharedValue,
   withDelay,
   withTiming,
-  useFrameCallback,
 } from 'react-native-reanimated'
 import { runOnUISync, scheduleOnRN } from 'react-native-worklets'
 
@@ -20,9 +20,9 @@ import { IS_IOS, ONE_FRAME_MS, scrollToImpl } from './helpers'
 import {
   useAnimatedDynamicRefs,
   useContainerRef,
+  useLayoutHeight,
   usePageScrollHandler,
   useTabProps,
-  useLayoutHeight,
 } from './hooks'
 import {
   CollapsibleProps,
@@ -231,9 +231,21 @@ export const Container = React.memo(
       const toggleSyncScrollFrame = (toggle: boolean) =>
         syncScrollFrame.setActive(toggle)
       const syncScrollFrame = useFrameCallback(({ timeSinceFirstFrame }) => {
-        // Reduce sync frequency on Android to prevent jittery animations
-        const syncInterval = IS_IOS ? 100 : (optimizeAndroidSync ? 200 : 100)
-        const maxDuration = IS_IOS ? 1500 : (optimizeAndroidSync ? 1000 : 1500)
+        // On Android with optimization, disable frame-based sync entirely to prevent bouncing
+        if (!IS_IOS && optimizeAndroidSync) {
+          // Only sync once at the beginning and then stop
+          if (timeSinceFirstFrame === 0) {
+            syncCurrentTabScrollPosition()
+          }
+          if (timeSinceFirstFrame > 100) {
+            scheduleOnRN(toggleSyncScrollFrame, false)
+          }
+          return
+        }
+
+        // iOS behavior (unchanged)
+        const syncInterval = 100
+        const maxDuration = 1500
         
         if (timeSinceFirstFrame % syncInterval === 0) {
           syncCurrentTabScrollPosition()
@@ -283,9 +295,24 @@ export const Container = React.memo(
       )
 
       const headerTranslateY = useDerivedValue(() => {
-        return revealHeaderOnScroll
-          ? -accDiffClamp.value
-          : -Math.min(scrollYCurrent.value, headerScrollDistance.value)
+        if (revealHeaderOnScroll) {
+          return -accDiffClamp.value
+        }
+        
+        // For Android, use a more stable calculation to prevent bouncing
+        if (!IS_IOS) {
+          const scrollValue = scrollYCurrent.value
+          const maxScroll = headerScrollDistance.value
+          
+          // Clamp the scroll value to prevent overscrolling issues
+          const clampedScroll = Math.max(0, Math.min(scrollValue, maxScroll))
+          
+          // Use a smoother interpolation for Android
+          return -clampedScroll
+        }
+        
+        // iOS behavior (unchanged)
+        return -Math.min(scrollYCurrent.value, headerScrollDistance.value)
       }, [revealHeaderOnScroll])
 
       const stylez = useAnimatedStyle(() => {

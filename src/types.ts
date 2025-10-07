@@ -1,16 +1,16 @@
 import React, { ComponentProps } from 'react'
 import {
-  FlatList,
-  ScrollView,
-  SectionList,
-  StyleProp,
-  ViewStyle,
+    FlatList,
+    ScrollView,
+    SectionList,
+    StyleProp,
+    ViewStyle,
 } from 'react-native'
 import PagerView, { PagerViewProps } from 'react-native-pager-view'
 import Animated, {
-  AnimatedRef,
-  SharedValue,
-  AnimatedStyle,
+    AnimatedRef,
+    AnimatedStyle,
+    SharedValue,
 } from 'react-native-reanimated'
 
 export type ContainerRef = PagerView

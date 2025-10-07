@@ -1,30 +1,30 @@
 import {
-  useMemo,
-  Children,
-  useState,
-  useCallback,
-  useContext,
-  MutableRefObject,
-  useEffect,
-  useRef,
+    Children,
+    MutableRefObject,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from 'react'
 import { LayoutChangeEvent, StyleSheet, ViewProps } from 'react-native'
 import { ContainerRef, RefComponent } from 'react-native-collapsible-tab-view'
 import { PagerViewOnPageScrollEvent } from 'react-native-pager-view'
 import {
-  cancelAnimation,
-  useAnimatedReaction,
-  useAnimatedRef,
-  useAnimatedScrollHandler,
-  useSharedValue,
-  withDelay,
-  withTiming,
-  interpolate,
-  useEvent,
-  useHandler,
-  AnimatedRef,
-  Extrapolation,
-  SharedValue,
+    AnimatedRef,
+    cancelAnimation,
+    Extrapolation,
+    interpolate,
+    SharedValue,
+    useAnimatedReaction,
+    useAnimatedRef,
+    useAnimatedScrollHandler,
+    useEvent,
+    useHandler,
+    useSharedValue,
+    withDelay,
+    withTiming,
 } from 'react-native-reanimated'
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets'
 import { useDeepCompareMemo } from 'use-deep-compare'
@@ -32,11 +32,11 @@ import { useDeepCompareMemo } from 'use-deep-compare'
 import { Context, TabNameContext } from './Context'
 import { IS_IOS, ONE_FRAME_MS, scrollToImpl } from './helpers'
 import {
-  CollapsibleStyle,
-  ContextType,
-  TabName,
-  TabReactElement,
-  TabsWithProps,
+    CollapsibleStyle,
+    ContextType,
+    TabName,
+    TabReactElement,
+    TabsWithProps,
 } from './types'
 
 export function useContainerRef() {
@@ -272,6 +272,7 @@ export const useScrollHandlerY = (name: TabName) => {
   } = useTabsContext()
 
   const enabled = useSharedValue(false)
+  const isUserScrolling = useSharedValue(false)
 
   const scrollTo = useScroller()
 
@@ -381,20 +382,29 @@ export const useScrollHandlerY = (name: TabName) => {
                   Extrapolation.CLAMP
                 )
           } else {
-            // Android: Apply similar clamping logic to prevent overscrolling issues
+            // Android: Use more stable scroll handling to prevent bouncing
             let { y } = event.contentOffset
+            
+            // Apply contentInset for consistency with iOS
+            y = y + contentInset
             
             if (!allowHeaderOverscroll) {
               const contentHeight =
                 contentHeights.value[tabNames.value.indexOf(name)] ||
                 Number.MAX_VALUE
               
-              const clampMax = Math.max(0, contentHeight - (containerHeight || 0))
-              // Clamp the scroll position to prevent negative values and overscrolling
-              y = Math.max(0, Math.min(y, clampMax))
+              const clampMax = Math.max(0, contentHeight - (containerHeight || 0) + contentInset)
+              
+              // Use interpolation for smoother clamping on Android
+              scrollYCurrent.value = interpolate(
+                y,
+                [0, clampMax],
+                [0, clampMax],
+                Extrapolation.CLAMP
+              )
+            } else {
+              scrollYCurrent.value = y
             }
-            
-            scrollYCurrent.value = y
           }
 
           scrollY.value[name] = scrollYCurrent.value
@@ -419,6 +429,9 @@ export const useScrollHandlerY = (name: TabName) => {
       },
       onBeginDrag: () => {
         if (!enabled.value) return
+
+        // Mark that user is actively scrolling
+        isUserScrolling.value = true
 
         // ensure the header stops snapping
         cancelAnimation(accDiffClamp)
@@ -450,7 +463,11 @@ export const useScrollHandlerY = (name: TabName) => {
           cancelAnimation(afterDrag)
         }
       },
-      onMomentumEnd,
+      onMomentumEnd: () => {
+        // Mark that user has finished scrolling
+        isUserScrolling.value = false
+        onMomentumEnd()
+      },
     },
     [
       refMap,
@@ -466,7 +483,7 @@ export const useScrollHandlerY = (name: TabName) => {
 
   // Throttle sync operations on Android to prevent jittery animations
   const lastSyncTime = useSharedValue(0)
-  const SYNC_THROTTLE_MS = IS_IOS ? 0 : 16 // ~60fps throttling on Android
+  const SYNC_THROTTLE_MS = IS_IOS ? 0 : 33 // ~30fps throttling on Android for smoother animations
 
   // sync unfocused scenes
   useAnimatedReaction(
@@ -486,6 +503,11 @@ export const useScrollHandlerY = (name: TabName) => {
         isSyncNeeded !== wasSyncNeeded &&
         focusedTab.value !== name
       ) {
+        // Don't sync if user is actively scrolling on Android to prevent bouncing
+        if (!IS_IOS && isUserScrolling.value) {
+          return
+        }
+
         // Throttle sync operations on Android
         const now = Date.now()
         if (!IS_IOS && now - lastSyncTime.value < SYNC_THROTTLE_MS) {
