@@ -381,7 +381,19 @@ export const useScrollHandlerY = (name: TabName) => {
                   Extrapolation.CLAMP
                 )
           } else {
-            const { y } = event.contentOffset
+            // Android: Apply similar clamping logic to prevent overscrolling issues
+            let { y } = event.contentOffset
+            
+            if (!allowHeaderOverscroll) {
+              const contentHeight =
+                contentHeights.value[tabNames.value.indexOf(name)] ||
+                Number.MAX_VALUE
+              
+              const clampMax = Math.max(0, contentHeight - (containerHeight || 0))
+              // Clamp the scroll position to prevent negative values and overscrolling
+              y = Math.max(0, Math.min(y, clampMax))
+            }
+            
             scrollYCurrent.value = y
           }
 
@@ -452,6 +464,10 @@ export const useScrollHandlerY = (name: TabName) => {
     ]
   )
 
+  // Throttle sync operations on Android to prevent jittery animations
+  const lastSyncTime = useSharedValue(0)
+  const SYNC_THROTTLE_MS = IS_IOS ? 0 : 16 // ~60fps throttling on Android
+
   // sync unfocused scenes
   useAnimatedReaction(
     () => {
@@ -470,6 +486,13 @@ export const useScrollHandlerY = (name: TabName) => {
         isSyncNeeded !== wasSyncNeeded &&
         focusedTab.value !== name
       ) {
+        // Throttle sync operations on Android
+        const now = Date.now()
+        if (!IS_IOS && now - lastSyncTime.value < SYNC_THROTTLE_MS) {
+          return
+        }
+        lastSyncTime.value = now
+
         let nextPosition: number | null = null
         const focusedScrollY = scrollY.value[focusedTab.value]
         const tabScrollY = scrollY.value[name]

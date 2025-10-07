@@ -77,6 +77,7 @@ export const Container = React.memo(
         onTabChange,
         width: customWidth,
         allowHeaderOverscroll,
+        optimizeAndroidSync = true,
       },
       ref
     ) => {
@@ -223,14 +224,21 @@ export const Container = React.memo(
        * changes for about 1500ms because the Lists can be late to accept the
        * scrollTo event we send. This fixes the issue of the scroll position
        * jumping when the user changes tab.
+       * 
+       * On Android, we reduce the frequency to prevent jittery animations
+       * and improve performance with the new architecture.
        * */
       const toggleSyncScrollFrame = (toggle: boolean) =>
         syncScrollFrame.setActive(toggle)
       const syncScrollFrame = useFrameCallback(({ timeSinceFirstFrame }) => {
-        if (timeSinceFirstFrame % 100 === 0) {
+        // Reduce sync frequency on Android to prevent jittery animations
+        const syncInterval = IS_IOS ? 100 : (optimizeAndroidSync ? 200 : 100)
+        const maxDuration = IS_IOS ? 1500 : (optimizeAndroidSync ? 1000 : 1500)
+        
+        if (timeSinceFirstFrame % syncInterval === 0) {
           syncCurrentTabScrollPosition()
         }
-        if (timeSinceFirstFrame > 1500) {
+        if (timeSinceFirstFrame > maxDuration) {
           scheduleOnRN(toggleSyncScrollFrame, false)
         }
       }, false)

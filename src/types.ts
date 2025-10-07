@@ -132,6 +132,14 @@ export type CollapsibleProps = {
    * @default false
    */
   allowHeaderOverscroll?: boolean
+
+  /**
+   * Whether to use optimized sync behavior for Android to prevent jittery animations.
+   * When true, reduces the frequency of scroll synchronization operations on Android.
+   *
+   * @default true
+   */
+  optimizeAndroidSync?: boolean
 }
 
 export type ContextType<T extends TabName = TabName> = {
